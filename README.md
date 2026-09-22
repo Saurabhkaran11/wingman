@@ -206,6 +206,12 @@ uv run pytest -q
 - [ ] Full live run with real API keys — **blocked only on filling in `.env`**
 - [ ] Demo rehearsal
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+- The memory, hook and steering patterns are adapted from AWS's [Agent with a Brain](https://github.com/sandhya-subramani/Agent-with-a-Brain), which is MIT-0 and requires no attribution. Credited here anyway.
+
 ## Acknowledgements
 
 - [Cognee](https://www.cognee.ai/)
