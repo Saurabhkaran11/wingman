@@ -56,6 +56,7 @@ flowchart LR
 - [Product document](docs/PRODUCT.md) — problem, users, scope, demo script, risks.
 - [Technical document](docs/TECHNICAL.md) — architecture, components, data contract, build plan.
 - [Examples and demo guide](docs/DEMO.md) — worked examples with real output, real-data setup, demo run sheet.
+- [Pitch](docs/PITCH.md) — the one-minute speech, the 90-second demo run sheet, and a slide-by-slide outline of the deck.
 
 ---
 
@@ -68,7 +69,7 @@ flowchart LR
 - Accounts and keys:
   - Cognee Cloud tenant URL and API key
   - Bright Data API token
-  - Amazon Bedrock access, or an Anthropic API key as a fallback
+  - An LLM: a Gemini API key (free, no card), an Anthropic API key, or Amazon Bedrock access
   - A Gmail app password (for emailing the dossier to yourself)
 
 ## Setup
@@ -183,7 +184,7 @@ uv run wingman render examples/sample_dossier.json
 wingman/
 ├── README.md
 ├── .env.example
-├── docs/                 # product + technical documents
+├── docs/                 # quickstart, product, technical, demo and pitch documents
 ├── data/
 │   ├── sample/           # safe, fake demo data
 │   └── private/          # your real exports (git-ignored)
@@ -228,8 +229,10 @@ uv run pytest -q
 - [x] Web dashboard: FastAPI + Next.js, live agent streaming, verified in a browser
 - [x] Bright Data MCP wiring verified (server boots, 5 tools listed, call reaches the API)
 - [x] Full `brief` pipeline verified end to end with the agent mocked
-- [x] Test suite: `uv run pytest -q` (11 tests, offline)
-- [ ] Full live run with real API keys — **blocked only on filling in `.env`**
+- [x] Test suite: `uv run pytest -q` (55 tests, offline)
+- [x] Gemini provider: a no-credit-card path to a working brief
+- [x] Full live run on real services — brain recall, web search, steering cap, PDF, follow-up draft
+- [x] Pitch deck, one-minute speech and demo run sheet ([docs/PITCH.md](docs/PITCH.md))
 - [ ] Demo rehearsal
 
 ## License
