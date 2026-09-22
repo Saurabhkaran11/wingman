@@ -1,0 +1,211 @@
+"""Offline tests: everything that does not need an API key.
+
+Run:  uv run pytest -q
+The two Docker tests are skipped automatically when the daemon is not running.
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+from unittest import mock
+
+import pytest
+
+from wingman import actions, config
+from wingman.calendar_reader import external_meetings
+from wingman.ingest import eml_to_text, load_documents
+from wingman.models import Dossier
+
+ROOT = config.ROOT
+SAMPLE = ROOT / "data" / "sample"
+DOSSIER = Dossier.model_validate_json((ROOT / "examples" / "sample_dossier.json").read_text())
+docker_up = subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+
+
+# --- calendar -------------------------------------------------------------
+
+def test_calendar_skips_meetings_with_only_me():
+    meetings = external_meetings(str(SAMPLE / "calendar.ics"))
+    titles = [m.title for m in meetings]
+    assert "Team standup" not in titles
+    assert titles[0] == "Coffee with Priya Shah (Cognee)"       # soonest first
+    assert meetings[0].attendees == ["Priya Shah <priya.shah@example.com>"]
+
+
+# --- ingestion ------------------------------------------------------------
+
+def test_load_documents_skips_readme_and_calendar():
+    names = [n for n, _ in load_documents(SAMPLE)]
+    assert len(names) == 7
+    assert "README.md" not in names and "calendar.ics" not in names
+
+
+def test_eml_to_text_flattens_headers():
+    raw = (b"From: Priya <priya@example.com>\r\nTo: alex@example.com\r\nDate: Fri, 12 Jun 2026 10:00:00 -0700\r\n"
+           b"Subject: Benchmark\r\nContent-Type: text/plain\r\n\r\nI'll send it Friday.\r\n")
+    text = eml_to_text(raw)
+    assert text.startswith("TYPE: email\nDATE: Fri, 12 Jun 2026")
+    assert "FROM: Priya <priya@example.com>" in text
+    assert text.endswith("I'll send it Friday.\n")
+
+
+# --- dossier + actions ----------------------------------------------------
+
+def test_dossier_schema_rejects_web_fact_without_source():
+    bad = json.loads(DOSSIER.model_dump_json())
+    del bad["whats_new"][0]["source_url"]
+    with pytest.raises(Exception):
+        Dossier.model_validate(bad)
+
+
+def test_markdown_contains_every_section():
+    md = actions.to_markdown(DOSSIER)
+    for heading in ("## You owe them", "## They owe you", "## What changed", "## Stale memory alerts", "## Talking points"):
+        assert heading in md
+    assert "https://www.cognee.ai/" in md                        # source URL survives
+
+
+def test_email_without_smtp_is_saved_not_sent(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(config, "SMTP_USER", "")
+    status = actions.send_dossier_email(DOSSIER, "Coffee with Priya", None)
+    assert "saved email" in status and (tmp_path / "dossier_priya_shah.eml").exists()
+
+
+def test_email_recipient_is_always_me(monkeypatch):
+    # Even a dossier full of other people's addresses must only go to the user.
+    monkeypatch.setattr(config, "SMTP_USER", "me@example.com")
+    monkeypatch.setattr(config, "SMTP_APP_PASSWORD", "x")
+    with mock.patch("smtplib.SMTP_SSL") as smtp:
+        actions.send_dossier_email(DOSSIER, "Coffee", None)
+    msg = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+    assert msg["To"] == "me@example.com"
+
+
+def test_followup_is_a_draft(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    path = actions.save_followup_draft("Priya Shah", "Benchmark", "Hi Priya")
+    assert path.read_text().startswith("DRAFT - not sent")
+
+
+# --- sandbox --------------------------------------------------------------
+
+@pytest.mark.skipif(not docker_up, reason="Docker daemon not running")
+def test_sandbox_renders_pdf():
+    from wingman import sandbox
+    pdf = sandbox.run_in_sandbox(DOSSIER.model_dump())
+    assert pdf.read_bytes()[:4] == b"%PDF"
+    assert (pdf.parent / "timeline.png").exists()
+    sandbox.collect(pdf, pdf.parent.parent.parent / "test_dossier.pdf").unlink()
+
+
+@pytest.mark.skipif(not docker_up, reason="Docker daemon not running")
+def test_sandbox_has_no_network():
+    from wingman import sandbox
+    probe = ("import socket, pathlib\n"
+             "try:\n    socket.create_connection(('1.1.1.1', 443), timeout=3); r='reachable'\n"
+             "except OSError: r='blocked'\n"
+             "pathlib.Path('/work/out/dossier.pdf').write_text(r)\n")
+    pdf = sandbox.run_in_sandbox({}, script=probe)
+    assert pdf.read_text() == "blocked"
+
+
+# --- the whole brief pipeline, with only the key-gated parts mocked ---------
+
+@pytest.mark.skipif(not docker_up, reason="Docker daemon not running")
+def test_brief_pipeline_end_to_end(tmp_path, monkeypatch):
+    from wingman import brain, cli
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(config, "SMTP_USER", "")
+    remembered = []
+    with mock.patch.object(brain, "connect", return_value="mock"), \
+         mock.patch.object(brain, "remember", side_effect=remembered.append), \
+         mock.patch("wingman.agent.bright_data_client", return_value=mock.MagicMock()), \
+         mock.patch("wingman.agent.prepare_dossier", return_value=DOSSIER):
+        monkeypatch.setattr(sys, "argv", ["wingman", "brief", "--next"])
+        cli.main()
+    assert (tmp_path / "dossier_priya_shah.pdf").exists()
+    assert (tmp_path / "dossier_priya_shah.eml").exists()
+    assert "These supersede older notes" in remembered[0]        # write-back happened
+
+
+# --- the three Strands patterns (memory injection, hook, steering) ----------
+
+def test_memory_store_adapts_brain_to_strands():
+    import asyncio
+    from wingman import brain
+    from wingman.plugins import CogneeMemory
+
+    async def fake(q, top_k=5):
+        return ["Priya leads DevRel at Cognee", "You owe her a benchmark"]
+
+    with mock.patch.object(brain, "recall_async", fake):
+        entries = asyncio.run(CogneeMemory().search("Priya Shah"))
+    assert [e.content for e in entries][0].startswith("Priya leads")
+    assert entries[0].store_name == "personal_brain"
+
+
+def test_memory_store_is_not_writable():
+    # Write-back is deterministic code in cli.py; the agent must not decide it.
+    from wingman.plugins import CogneeMemory
+
+    assert CogneeMemory.writable is False
+
+
+def test_audit_hook_writes_one_json_line_per_tool_call(tmp_path):
+    from wingman.plugins import AuditHook
+
+    log = tmp_path / "run.jsonl"
+    hook = AuditHook(log_path=log)
+    hook.after_tool(mock.Mock(tool_use={"name": "web_search", "input": {"query": "x"}},
+                              result={"status": "success", "content": [{"text": "yz"}]}, duration=1.5))
+    row = json.loads(log.read_text())
+    assert (row["tool"], row["status"], row["ms"], row["result_chars"]) == ("web_search", "success", 1500, 2)
+
+
+@pytest.mark.parametrize("name,args,expected", [
+    ("web_search", {"query": "best pizza in SF"}, "guide"),        # off-topic query blocked
+    ("web_search", {"query": '"Priya Shah" Cognee'}, "proceed"),
+    ("read_web_page", {"url": "https://example.com"}, "proceed"),
+    ("save_followup_draft", {"person": "Priya Shah"}, "proceed"),
+    ("save_followup_draft", {"person": "Random Stranger"}, "guide"),  # wrong recipient blocked
+])
+def test_steering_rules(name, args, expected):
+    import asyncio
+    from wingman.plugins import ResearchPolicy
+
+    policy = ResearchPolicy("Priya Shah", "Cognee")
+    assert asyncio.run(policy.steer_before_tool(agent=None, tool_use={"name": name, "input": args})).type == expected
+
+
+def test_steering_caps_searches_and_scrapes():
+    import asyncio
+    from wingman.plugins import ResearchPolicy
+
+    policy = ResearchPolicy("Priya Shah", "Cognee")
+    call = lambda n, a: asyncio.run(policy.steer_before_tool(agent=None, tool_use={"name": n, "input": a})).type
+    assert [call("web_search", {"query": "Cognee news"}) for _ in range(4)] == ["proceed"] * 3 + ["guide"]
+    assert [call("read_web_page", {"url": "https://x"}) for _ in range(4)] == ["proceed"] * 3 + ["guide"]
+
+
+def test_agent_exposes_recall_memory_from_the_memory_store():
+    # MemoryManager builds recall_memory from CogneeMemory; build_tools must not duplicate it.
+    from wingman import agent
+    from wingman.models import Meeting
+
+    meeting = Meeting(title="Coffee with Priya Shah (Cognee)", start="2026-09-22T17:00:00+00:00",
+                      attendees=["Priya Shah <priya.shah@example.com>"])
+    with mock.patch("wingman.agent.build_model", return_value=mock.MagicMock()):
+        built = agent.build_agent(meeting, web=mock.MagicMock())
+    assert sorted(built.tool_names) == ["read_web_page", "recall_memory", "save_followup_draft", "web_search"]
+
+
+@pytest.mark.parametrize("attendee,expected", [
+    ("Priya Shah <priya.shah@example.com>", ("Priya Shah", "")),
+    ("Priya Shah (Cognee)", ("Priya Shah", "Cognee")),
+])
+def test_split_attendee(attendee, expected):
+    from wingman.agent import split_attendee
+
+    assert split_attendee(attendee) == expected

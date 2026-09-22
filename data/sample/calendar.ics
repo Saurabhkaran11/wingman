@@ -1,0 +1,31 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//wingman//sample//EN
+BEGIN:VEVENT
+UID:standup-0922@example.com
+DTSTART:20260922T160000Z
+DTEND:20260922T161500Z
+SUMMARY:Team standup
+ORGANIZER;CN=Alex Rivera:mailto:alex@example.com
+ATTENDEE;CN=Alex Rivera:mailto:alex@example.com
+END:VEVENT
+BEGIN:VEVENT
+UID:priya-coffee-0922@example.com
+DTSTART:20260922T170000Z
+DTEND:20260922T174500Z
+SUMMARY:Coffee with Priya Shah (Cognee)
+LOCATION:Sightglass Coffee, 270 7th St, San Francisco
+ORGANIZER;CN=Alex Rivera:mailto:alex@example.com
+ATTENDEE;CN=Alex Rivera:mailto:alex@example.com
+ATTENDEE;CN=Priya Shah:mailto:priya.shah@example.com
+END:VEVENT
+BEGIN:VEVENT
+UID:daniel-screen-0923@example.com
+DTSTART:20260923T180000Z
+DTEND:20260923T183000Z
+SUMMARY:Follow-up with Daniel Okafor (Northwind Robotics)
+ORGANIZER;CN=Daniel Okafor:mailto:daniel.okafor@example.com
+ATTENDEE;CN=Alex Rivera:mailto:alex@example.com
+ATTENDEE;CN=Daniel Okafor:mailto:daniel.okafor@example.com
+END:VEVENT
+END:VCALENDAR

@@ -1,0 +1,32 @@
+{
+  "person": "Priya Shah",
+  "role": "Developer Relations Lead",
+  "company": "Cognee",
+  "how_we_know_each_other": "Met at AI Tinkerers SF on 2026-05-13 after her lightning talk on graph memory for agents; one call since.",
+  "last_interaction": {"date": "2026-06-25", "kind": "email", "summary": "Priya introduced Marco Bianchi and asked again about the benchmark"},
+  "i_owe_them": [
+    "Graph memory vs vector RAG benchmark on my notes dataset (promised for 2026-06-19, now 3 months late)",
+    "Share the notes-agent repo once cleaned up"
+  ],
+  "they_owe_me": [
+    "Early access to a hosted version of Cognee"
+  ],
+  "whats_new": [
+    {"statement": "EXAMPLE ONLY: placeholder for a live web fact found by Bright Data", "source_url": "https://www.cognee.ai/", "as_of": "2026-09-21"}
+  ],
+  "stale_alerts": [
+    {"memory_says": "Cognee is self-hosted only and has no cloud product (call notes, 2026-06-10)", "web_says": "EXAMPLE ONLY: Cognee Cloud is publicly available", "source_url": "https://docs.cognee.ai/cognee-cloud/overview"}
+  ],
+  "talking_points": [
+    "Open by owning the late benchmark and offer a concrete delivery date",
+    "Ask how the hosted product changed their developer onboarding",
+    "Ask how her Berlin half marathon went"
+  ],
+  "timeline": [
+    {"date": "2026-05-14", "kind": "email", "summary": "Intro email after AI Tinkerers"},
+    {"date": "2026-05-20", "kind": "email", "summary": "Priya replied, proposed June 10"},
+    {"date": "2026-06-10", "kind": "meeting", "summary": "Call on graph memory"},
+    {"date": "2026-06-12", "kind": "email", "summary": "I promised the benchmark"},
+    {"date": "2026-06-25", "kind": "email", "summary": "Intro to Marco Bianchi"}
+  ]
+}

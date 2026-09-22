@@ -1,0 +1,29 @@
+[project]
+name = "wingman"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Saurabhkaran11", email = "saurabhkaran11@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cognee>=1.6.0",
+    "icalendar>=7.3.0",
+    "mcp>=2.1.1",
+    "pydantic>=2.13.5",
+    "python-dotenv>=1.2.3",
+    "strands-agents[anthropic]>=1.56.0",
+    "strands-agents-tools>=0.8.9",
+]
+
+[project.scripts]
+wingman = "wingman:main"
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

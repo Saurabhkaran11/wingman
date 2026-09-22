@@ -1,0 +1,25 @@
+# Secrets
+.env
+# The template IS committed. Negated because a global gitignore may exclude .env.*
+!.env.example
+
+# Real personal data never leaves the laptop
+data/private/
+
+# Generated output
+out/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Cognee local state (if run without cloud)
+.cognee_system/
+.data_storage/
+
+# macOS
+.DS_Store
+.cognee_cache/
+.pytest_cache/
+

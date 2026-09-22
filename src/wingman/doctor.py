@@ -1,0 +1,109 @@
+"""`wingman doctor`: check every live dependency before a demo.
+
+Each check makes one small REAL call (a live web search, a one-word model
+reply, an SMTP login) so a green row means the service works right now, not
+just that a key is present.
+"""
+
+import shutil
+import smtplib
+import subprocess
+import uuid
+from typing import Callable
+
+from wingman import config
+
+GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
+
+
+class Skip(Exception):
+    """Raised by a check when its keys are not configured yet."""
+
+
+def check_docker() -> str:
+    if subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+        raise RuntimeError("Docker daemon is not running. Start Docker Desktop.")
+    from wingman import sandbox
+
+    sandbox.ensure_image()
+    return "daemon running, sandbox image ready"
+
+
+def check_calendar() -> str:
+    from wingman.calendar_reader import external_meetings
+
+    source = config.env("WINGMAN_CALENDAR", str(config.ROOT / "data/sample/calendar.ics"))
+    meetings = external_meetings(source)
+    kind = "live feed" if source.startswith("https://") else "local file"
+    return f"{kind}: {len(meetings)} upcoming external meetings"
+
+
+def check_brain() -> str:
+    if not (config.COGNEE_CLOUD_URL and config.COGNEE_API_KEY) and not config.env("LLM_API_KEY"):
+        raise Skip("set COGNEE_CLOUD_URL + COGNEE_API_KEY (cloud) or LLM_API_KEY (local)")
+    from wingman import brain
+
+    mode = brain.connect()
+    answer = brain.recall("Who is the user meeting next?")
+    return f"{mode} mode, recall returned {len(answer)} chars"
+
+
+def check_web() -> str:
+    if not config.BRIGHT_DATA_TOKEN:
+        raise Skip("set API_TOKEN (Bright Data)")
+    if not shutil.which("npx"):
+        raise RuntimeError("npx not found. Install Node.js 18+.")
+    from wingman.agent import _mcp_text, bright_data_client
+
+    with bright_data_client() as web:
+        tools = [t.tool_name for t in web.list_tools_sync()]
+        result = web.call_tool_sync(uuid.uuid4().hex, "search_engine", {"query": "Cognee AI memory news"})
+    return f"{len(tools)} tools, live search returned {len(_mcp_text(result))} chars"
+
+
+def check_model() -> str:
+    if config.MODEL_PROVIDER == "anthropic" and not config.ANTHROPIC_API_KEY:
+        raise Skip("set ANTHROPIC_API_KEY, or AWS credentials for Bedrock")
+    if config.MODEL_PROVIDER == "bedrock" and not (config.env("AWS_ACCESS_KEY_ID") or config.env("AWS_PROFILE")):
+        raise Skip("set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (Bedrock), or ANTHROPIC_API_KEY")
+    from strands import Agent
+
+    from wingman.agent import build_model
+
+    reply = Agent(model=build_model(), callback_handler=None)("Reply with the single word: ready")
+    return f"{config.MODEL_PROVIDER} replied: {str(reply).strip()[:40]}"
+
+
+def check_email() -> str:
+    if not (config.SMTP_USER and config.SMTP_APP_PASSWORD):
+        raise Skip("set SMTP_USER + SMTP_APP_PASSWORD (briefs are saved as .eml files until then)")
+    with smtplib.SMTP_SSL(config.SMTP_HOST, 465, timeout=20) as smtp:
+        smtp.login(config.SMTP_USER, config.SMTP_APP_PASSWORD)
+    return f"SMTP login ok as {config.SMTP_USER}"
+
+
+CHECKS: list[tuple[str, Callable[[], str]]] = [
+    ("Docker sandbox", check_docker),
+    ("Calendar", check_calendar),
+    ("Cognee brain", check_brain),
+    ("Bright Data web", check_web),
+    ("LLM", check_model),
+    ("Email", check_email),
+]
+
+
+def run() -> bool:
+    """Run every check and print one row each. Returns True if nothing failed.
+
+    Example output row:  PASS  Bright Data web   5 tools, live search returned 8421 chars
+    """
+    ok = True
+    for name, check in CHECKS:
+        try:
+            print(f"{GREEN}PASS{RESET}  {name:<16} {check()}")
+        except Skip as why:
+            print(f"{YELLOW}SKIP{RESET}  {name:<16} {why}")
+        except Exception as exc:
+            ok = False
+            print(f"{RED}FAIL{RESET}  {name:<16} {str(exc)[:200]}")
+    return ok
