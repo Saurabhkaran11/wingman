@@ -77,7 +77,7 @@ def build_model():
 
         return GeminiModel(
             client_args={"api_key": config.GEMINI_API_KEY},
-            model_id=config.MODEL_ID or "gemini-3.6-flash",
+            model_id=config.MODEL_ID or "gemini-3.5-flash",
             params={"max_output_tokens": 8000},
         )
     if config.MODEL_PROVIDER == "anthropic":
