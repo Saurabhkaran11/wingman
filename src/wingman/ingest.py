@@ -1,5 +1,6 @@
 """Load a folder of personal data into the brain."""
 
+import time
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -46,13 +47,27 @@ def load_documents(folder: Path) -> list[tuple[str, str]]:
     return docs
 
 
-def ingest_folder(folder: Path, remember: Callable[[str], None], log: Callable[[str], None] = print) -> int:
+def ingest_folder(
+    folder: Path,
+    remember: Callable[[str], None],
+    log: Callable[[str], None] = print,
+    limit: int | None = None,
+    delay: float = 0.0,
+) -> int:
     """Send each document to the brain with one remember() call per file.
 
     One call per file keeps failures isolated: a bad document is reported and
     skipped instead of sinking the whole batch.
+
+    Args:
+        limit: Stop after this many documents. Useful to prove the pipeline on one
+            file before committing to a long ingest.
+        delay: Seconds to wait between documents. Free-tier model keys are rate
+            limited per minute, and ingestion is the burstiest thing Wingman does.
+
+    Example: ingest_folder(Path("data/sample"), brain.remember, limit=1) -> 1
     """
-    docs = load_documents(folder)
+    docs = load_documents(folder)[: limit or None]
     stored = 0
     for i, (name, text) in enumerate(docs, 1):
         log(f"[{i}/{len(docs)}] remembering {name}")
@@ -61,4 +76,6 @@ def ingest_folder(folder: Path, remember: Callable[[str], None], log: Callable[[
             stored += 1
         except Exception as exc:  # keep going; report at the end
             log(f"    failed: {exc}")
+        if delay and i < len(docs):
+            time.sleep(delay)
     return stored

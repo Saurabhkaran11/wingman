@@ -38,7 +38,9 @@ class CogneeMemory:
 
     name = "personal_brain"
     description = "The user's emails, meeting notes, commitments and past interactions."
-    max_search_results = 5
+    # 3, not 5: each recall is a round trip to Cognee (and, in local mode, to the
+    # embedding model too). On a free-tier key that quota is the binding constraint.
+    max_search_results = 3
     writable = False      # write-back is deterministic code in cli.py, not an agent choice
     extraction = None
 

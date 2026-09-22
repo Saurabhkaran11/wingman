@@ -33,7 +33,7 @@ def cmd_ingest(args) -> None:
     from wingman.ingest import ingest_folder
 
     _step(f"Connecting to Cognee ({brain.connect()} mode), dataset '{config.DATASET}'")
-    n = ingest_folder(Path(args.folder), brain.remember)
+    n = ingest_folder(Path(args.folder), brain.remember, limit=args.limit, delay=args.delay)
     print(f"\nremembered {n} documents")
 
 
@@ -178,6 +178,8 @@ def main() -> None:
 
     p = sub.add_parser("ingest", help="remember every document in a folder")
     p.add_argument("folder")
+    p.add_argument("--limit", type=int, help="stop after N documents (try --limit 1 first)")
+    p.add_argument("--delay", type=float, default=0.0, help="seconds between documents, for rate-limited keys")
     p.set_defaults(func=cmd_ingest)
 
     p = sub.add_parser("ingest-gmail", help="remember live Gmail messages matching a search")

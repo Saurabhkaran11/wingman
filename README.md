@@ -52,6 +52,7 @@ flowchart LR
 
 ## Documentation
 
+- **[Quickstart](docs/QUICKSTART.md) — start here. Keys, checks, first run.**
 - [Product document](docs/PRODUCT.md) — problem, users, scope, demo script, risks.
 - [Technical document](docs/TECHNICAL.md) — architecture, components, data contract, build plan.
 - [Examples and demo guide](docs/DEMO.md) — worked examples with real output, real-data setup, demo run sheet.
