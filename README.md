@@ -6,6 +6,10 @@ Wingman reads your calendar, recalls everything you know about the people you're
 
 Built for **Battle of the Personal Brains** (Bright Data office, San Francisco — 2026-09-21).
 
+![Wingman demo](docs/media/demo.gif)
+
+*A slideshow, not a screen recording — but every number on it is real: the live `wingman doctor` output, and an answer from Cognee Cloud that joins three separate documents to say what was promised and whether it shipped.*
+
 ---
 
 ## What it does
