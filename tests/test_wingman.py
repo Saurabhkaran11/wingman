@@ -209,3 +209,59 @@ def test_split_attendee(attendee, expected):
     from wingman.agent import split_attendee
 
     assert split_attendee(attendee) == expected
+
+
+# --- the free-tier / fallback paths added late ------------------------------
+
+def test_gemini_branch_constructs():
+    # No key needed: this proves the provider wiring, not a live call.
+    from wingman import config as cfg
+    from wingman.agent import build_model
+
+    with mock.patch.object(cfg, "MODEL_PROVIDER", "gemini"), \
+         mock.patch.object(cfg, "GEMINI_API_KEY", "fake-key"):
+        model = build_model()
+    assert type(model).__name__ == "GeminiModel"
+    assert model.get_config()["model_id"] == "gemini-2.5-flash"
+
+
+def test_provider_resolution_prefers_the_card_free_option():
+    import importlib
+
+    from wingman import config as cfg
+
+    for env, expected in [
+        ({"GEMINI_API_KEY": "g", "ANTHROPIC_API_KEY": "a"}, "gemini"),
+        ({"ANTHROPIC_API_KEY": "a"}, "anthropic"),
+        ({}, "bedrock"),
+    ]:
+        with mock.patch.dict("os.environ", env, clear=False):
+            for name in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "WINGMAN_MODEL_PROVIDER"):
+                if name not in env:
+                    mock.patch.dict("os.environ", {}, clear=False).start()
+                    __import__("os").environ.pop(name, None)
+            assert importlib.reload(cfg).MODEL_PROVIDER == expected
+    importlib.reload(cfg)
+
+
+def test_ingest_limit_and_delay():
+    from wingman.ingest import ingest_folder
+
+    stored = []
+    assert ingest_folder(ROOT / "data/sample", stored.append, log=lambda _m: None, limit=2) == 2
+    assert ingest_folder(ROOT / "data/sample", stored.append, log=lambda _m: None, limit=1, delay=0.01) == 1
+
+
+def test_json_fallback_parses_a_fenced_reply():
+    # What a model returns when it cannot satisfy the nested tool schema.
+    from wingman.agent import _dossier_from_text
+
+    fenced = "Sure, here you go:\n```json\n" + DOSSIER.model_dump_json() + "\n```"
+    assert _dossier_from_text(fenced).person == "Priya Shah"
+
+
+def test_json_fallback_rejects_a_reply_with_no_json():
+    from wingman.agent import _dossier_from_text
+
+    with pytest.raises(ValueError):
+        _dossier_from_text("I could not complete the research.")
