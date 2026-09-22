@@ -55,9 +55,21 @@ Rules:
 def build_model():
     """Pick the LLM provider from config.
 
-    Example: ANTHROPIC_API_KEY set and nothing else -> AnthropicModel("claude-sonnet-5").
-             Otherwise -> BedrockModel using the default AWS credential chain.
+    Resolution order (see config.MODEL_PROVIDER): whichever key is present.
+      GEMINI_API_KEY    -> GeminiModel     (free tier, no credit card)
+      ANTHROPIC_API_KEY -> AnthropicModel
+      otherwise         -> BedrockModel    (AWS credential chain)
+
+    Example: GEMINI_API_KEY set and nothing else -> GeminiModel("gemini-2.5-flash").
     """
+    if config.MODEL_PROVIDER == "gemini":
+        from strands.models.gemini import GeminiModel
+
+        return GeminiModel(
+            client_args={"api_key": config.GEMINI_API_KEY},
+            model_id=config.MODEL_ID or "gemini-2.5-flash",
+            params={"max_output_tokens": 8000},
+        )
     if config.MODEL_PROVIDER == "anthropic":
         from strands.models.anthropic import AnthropicModel
 

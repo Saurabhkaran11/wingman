@@ -40,7 +40,8 @@ def check_calendar() -> str:
 
 def check_brain() -> str:
     if not (config.COGNEE_CLOUD_URL and config.COGNEE_API_KEY) and not config.env("LLM_API_KEY"):
-        raise Skip("set COGNEE_CLOUD_URL + COGNEE_API_KEY (cloud) or LLM_API_KEY (local)")
+        raise Skip("set COGNEE_CLOUD_URL + COGNEE_API_KEY (cloud), or LLM_API_KEY + "
+                   "LLM_PROVIDER/EMBEDDING_PROVIDER for local graph building")
     from wingman import brain
 
     mode = brain.connect()
@@ -62,10 +63,8 @@ def check_web() -> str:
 
 
 def check_model() -> str:
-    if config.MODEL_PROVIDER == "anthropic" and not config.ANTHROPIC_API_KEY:
-        raise Skip("set ANTHROPIC_API_KEY, or AWS credentials for Bedrock")
     if config.MODEL_PROVIDER == "bedrock" and not (config.env("AWS_ACCESS_KEY_ID") or config.env("AWS_PROFILE")):
-        raise Skip("set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (Bedrock), or ANTHROPIC_API_KEY")
+        raise Skip("set GEMINI_API_KEY (free, no card), ANTHROPIC_API_KEY, or AWS credentials for Bedrock")
     from strands import Agent
 
     from wingman.agent import build_model

@@ -63,7 +63,13 @@ BRIGHT_DATA_TOKEN = env("API_TOKEN")
 # Model provider: "bedrock" (Strands default) or "anthropic".
 # Example: with only ANTHROPIC_API_KEY set, provider resolves to "anthropic".
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
-MODEL_PROVIDER = env("WINGMAN_MODEL_PROVIDER", "anthropic" if ANTHROPIC_API_KEY else "bedrock")
+GEMINI_API_KEY = env("GEMINI_API_KEY")
+# Gemini first: it is the only one of the three with a free tier that needs no
+# credit card, so a laptop with just that key still runs the whole agent.
+MODEL_PROVIDER = env(
+    "WINGMAN_MODEL_PROVIDER",
+    "gemini" if GEMINI_API_KEY else "anthropic" if ANTHROPIC_API_KEY else "bedrock",
+)
 MODEL_ID = env("WINGMAN_MODEL_ID")  # blank = provider default
 
 SMTP_USER = env("SMTP_USER")
