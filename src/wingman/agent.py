@@ -70,14 +70,14 @@ def build_model():
       ANTHROPIC_API_KEY -> AnthropicModel
       otherwise         -> BedrockModel    (AWS credential chain)
 
-    Example: GEMINI_API_KEY set and nothing else -> GeminiModel("gemini-2.5-flash").
+    Example: GEMINI_API_KEY set and nothing else -> GeminiModel("gemini-3.6-flash").
     """
     if config.MODEL_PROVIDER == "gemini":
         from strands.models.gemini import GeminiModel
 
         return GeminiModel(
             client_args={"api_key": config.GEMINI_API_KEY},
-            model_id=config.MODEL_ID or "gemini-2.5-flash",
+            model_id=config.MODEL_ID or "gemini-3.6-flash",
             params={"max_output_tokens": 8000},
         )
     if config.MODEL_PROVIDER == "anthropic":

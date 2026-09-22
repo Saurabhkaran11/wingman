@@ -228,26 +228,33 @@ def test_gemini_branch_constructs():
          mock.patch.object(cfg, "GEMINI_API_KEY", "fake-key"):
         model = build_model()
     assert type(model).__name__ == "GeminiModel"
-    assert model.get_config()["model_id"] == "gemini-2.5-flash"
+    assert model.get_config()["model_id"] == "gemini-3.6-flash"
 
 
-def test_provider_resolution_prefers_the_card_free_option():
+@pytest.mark.parametrize("present,expected", [
+    (["GEMINI_API_KEY", "ANTHROPIC_API_KEY"], "gemini"),   # card-free option wins
+    (["ANTHROPIC_API_KEY"], "anthropic"),
+    ([], "bedrock"),
+])
+def test_provider_resolution_prefers_the_card_free_option(present, expected, monkeypatch):
+    """Resolution must come from the given env, never the developer's own .env."""
     import importlib
 
     from wingman import config as cfg
 
-    for env, expected in [
-        ({"GEMINI_API_KEY": "g", "ANTHROPIC_API_KEY": "a"}, "gemini"),
-        ({"ANTHROPIC_API_KEY": "a"}, "anthropic"),
-        ({}, "bedrock"),
-    ]:
-        with mock.patch.dict("os.environ", env, clear=False):
-            for name in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "WINGMAN_MODEL_PROVIDER"):
-                if name not in env:
-                    mock.patch.dict("os.environ", {}, clear=False).start()
-                    __import__("os").environ.pop(name, None)
-            assert importlib.reload(cfg).MODEL_PROVIDER == expected
-    importlib.reload(cfg)
+    # Set to empty rather than delete: reloading config calls load_dotenv(), which
+    # would re-read the developer's real .env for any name that is absent. An
+    # empty value is already present, so dotenv leaves it alone, and config
+    # strips empties before resolving.
+    for name in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "WINGMAN_MODEL_PROVIDER"):
+        monkeypatch.setenv(name, "")
+    for name in present:
+        monkeypatch.setenv(name, "x")
+    try:
+        assert importlib.reload(cfg).MODEL_PROVIDER == expected
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfg)   # restore the real config for every later test
 
 
 def test_ingest_limit_and_delay():

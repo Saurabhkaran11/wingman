@@ -54,12 +54,21 @@ def remember(text: str) -> None:
 
 
 def _texts(entries: list) -> list[str]:
-    # Recall returns a mix of entry types: graph entries carry `.text`,
-    # QA entries carry `.answer`. Take whichever is present.
-    # Example: [GraphEntry(text="Priya works at Cognee"), QAEntry(answer="...")] -> two strings
+    """Pull the readable text out of whatever recall returned.
+
+    Cognee Cloud answers with plain dicts and the local SDK with objects, and
+    either may carry the text under `text` (graph entries) or `answer` (QA
+    entries). Reading only attributes silently dropped every cloud result.
+
+    Example: [{"kind": "graph_completion", "text": "You promised ..."}]
+             -> ["You promised ..."]
+    """
     out = []
     for entry in entries:
-        text = getattr(entry, "text", None) or getattr(entry, "answer", None)
+        if isinstance(entry, dict):
+            text = entry.get("text") or entry.get("answer")
+        else:
+            text = getattr(entry, "text", None) or getattr(entry, "answer", None)
         if text:
             out.append(str(text))
     return out
