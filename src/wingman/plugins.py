@@ -2,10 +2,13 @@
 
   MEMORY    CogneeMemory     the Personal Brain as a Strands memory store, so relevant
                              memories are recalled and injected BEFORE every model call
-  HOOK      AuditHook        deterministic code after every tool call: prints a line
+  HOOK      AuditHook        deterministic code after every tool call: emits an event
                              and appends to out/run_<timestamp>.jsonl
   STEERING  ResearchPolicy   Python rules that run BEFORE a tool call and can block it:
                              caps on searches/scrapes, and drafts only to the attendee
+
+All three report through wingman.events rather than printing, so the same run
+narrates itself in the terminal and streams to the browser.
 
 None of these involve an LLM decision, which is the point: the demo's reliability and
 cost do not depend on the model remembering the rules in its prompt.
@@ -20,7 +23,7 @@ from strands.hooks import AfterToolCallEvent, HookProvider, HookRegistry
 from strands.memory.types import MemoryEntry
 from strands.vended_plugins.steering import Guide, Proceed, SteeringHandler
 
-from wingman import brain, config
+from wingman import brain, config, events
 
 
 # ── MEMORY ──────────────────────────────────────────────────────────────────────────
@@ -55,7 +58,7 @@ def format_injection(ctx) -> str:
     # Example: 3 entries -> "   [memory] 3 entries injected" on stderr, and
     #          "<personal_brain>\n...\n</personal_brain>" in the prompt.
     n = len(ctx.entries)
-    print(f"   [memory] {n} entr{'y' if n == 1 else 'ies'} injected into the prompt")
+    events.emit("memory", f"{n} entr{'y' if n == 1 else 'ies'} recalled", "injected into the prompt")
     return "<personal_brain>\n" + "\n".join(e.content for e in ctx.entries) + "\n</personal_brain>"
 
 
@@ -85,7 +88,7 @@ class AuditHook(HookProvider):
         chars = sum(len(c.get("text", "")) for c in (event.result or {}).get("content", []))
         ms = round((event.duration or 0) * 1000)
         preview = json.dumps(args)[:90]
-        print(f"   [hook] #{self.calls} {name}({preview}) -> {status} in {ms} ms")
+        events.emit("tool", f"#{self.calls} {name}", f"{preview} -> {status} in {ms} ms")
         with self.log_path.open("a") as f:
             f.write(json.dumps({"t": datetime.now().isoformat(timespec="seconds"), "tool": name, "args": args,
                                 "status": status, "ms": ms, "result_chars": chars}) + "\n")
@@ -145,5 +148,5 @@ class ResearchPolicy(SteeringHandler):
 
     @staticmethod
     def _block(reason: str) -> Guide:
-        print(f"   [steering] BLOCKED: {reason}")
+        events.emit("steering", "BLOCKED", reason)
         return Guide(reason=reason)

@@ -26,7 +26,7 @@ def fetch_emails(query: str, limit: int = 25) -> list[tuple[str, str]]:
         -> [("gmail:48211", "TYPE: email\\nDATE: ...\\nFROM: ...\\n\\n<body>"), ...]
     """
     if not (config.SMTP_USER and config.SMTP_APP_PASSWORD):
-        raise SystemExit("SMTP_USER and SMTP_APP_PASSWORD (a Gmail app password) are required in .env")
+        raise config.MissingConfig("SMTP_USER and SMTP_APP_PASSWORD (a Gmail app password) are required in .env")
 
     imap = imaplib.IMAP4_SSL("imap.gmail.com")
     try:

@@ -25,6 +25,7 @@ Built for **Battle of the Personal Brains** (Bright Data office, San Francisco �
 - **Bright Data** — live web search and scraping via its MCP server.
 - **AWS Strands Agents** — the agent loop, plus memory injection, hooks and steering.
 - **Docker** — isolated, network-less execution of generated rendering code.
+- **FastAPI + Next.js** — a dashboard that streams the agent's reasoning live.
 - **Your data** — a local folder of exported emails, notes, and a calendar file.
 
 ## Three Strands patterns doing real work
@@ -97,6 +98,27 @@ uv run wingman doctor
 
 - The sandbox image builds itself on first use.
 
+## The dashboard
+
+```bash
+uv run wingman web
+```
+
+- Opens on http://localhost:8000.
+- **Two pages:** the workspace (meetings, dossier, live agent trace) and `/setup` (health checks with the exact variables each one needs).
+- **The agent narrates itself** over Server-Sent Events: what it recalled, every tool call with timings, and anything the steering policy blocked.
+- **The UI is pre-built and committed**, so running Wingman needs no Node at all.
+- It binds to localhost because it has no login — it can read your mail and spend your API credits.
+
+### Changing the frontend
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+- Next.js dev server on :3000, talking to the API on :8000 (start it with `WINGMAN_DEV=1 uv run wingman web`).
+- `npm run build` produces a static export and copies it into the Python package.
+
 ## Usage
 
 1. Build the brain from the sample data.
@@ -130,6 +152,7 @@ uv run wingman render examples/sample_dossier.json
 ```
 
 - **All commands:**
+  - `web` — run the dashboard.
   - `doctor` — live-check every dependency.
   - `ingest <folder>` — remember `.md`, `.txt` and `.eml` files.
   - `ingest-gmail "<gmail search>"` — remember live Gmail messages (read-only IMAP); add `--dry-run` to preview.
@@ -164,6 +187,7 @@ wingman/
 │   ├── sample/           # safe, fake demo data
 │   └── private/          # your real exports (git-ignored)
 ├── sandbox/              # Dockerfile + render template
+├── frontend/             # Next.js dashboard (source; the build is committed to the package)
 ├── examples/             # a sample dossier for the offline render
 ├── src/wingman/          # agent, plugins, brain, ingest, gmail, calendar, sandbox, actions, doctor, cli
 ├── tests/                # offline test suite
@@ -177,7 +201,7 @@ uv run pytest -q
 ```
 
 - Runs offline; no API keys needed.
-- 23 tests covering calendar parsing, email ingestion, the dossier schema, email guardrails, the memory store, the audit hook, every steering rule, sandbox rendering and isolation, and the whole `brief` pipeline with the agent mocked.
+- Covers calendar parsing, email ingestion, the dossier schema, email guardrails, the memory store, the audit hook, every steering rule, sandbox rendering and isolation, the whole `brief` pipeline with the agent mocked, and every dashboard API scenario: streaming, concurrency, agent failure, path-traversal attempts and secret leakage.
 - The Docker tests skip themselves when the daemon is not running.
 
 ## Privacy and safety
@@ -200,6 +224,7 @@ uv run pytest -q
 - [x] Actions: email to self, follow-up draft, write-back
 - [x] `wingman doctor` live checks
 - [x] Strands memory injection, audit hook and steering policy
+- [x] Web dashboard: FastAPI + Next.js, live agent streaming, verified in a browser
 - [x] Bright Data MCP wiring verified (server boots, 5 tools listed, call reaches the API)
 - [x] Full `brief` pipeline verified end to end with the agent mocked
 - [x] Test suite: `uv run pytest -q` (11 tests, offline)

@@ -92,18 +92,31 @@ CHECKS: list[tuple[str, Callable[[], str]]] = [
 ]
 
 
+def status() -> list[dict]:
+    """Run every check and return one row each, without printing.
+
+    Example row: {"name": "Bright Data web", "state": "pass",
+                  "detail": "5 tools, live search returned 8421 chars"}
+    """
+    rows = []
+    for name, check in CHECKS:
+        try:
+            rows.append({"name": name, "state": "pass", "detail": check()})
+        except Skip as why:
+            rows.append({"name": name, "state": "skip", "detail": str(why)})
+        except Exception as exc:
+            rows.append({"name": name, "state": "fail", "detail": str(exc)[:200]})
+    return rows
+
+
 def run() -> bool:
-    """Run every check and print one row each. Returns True if nothing failed.
+    """Print one row per check. Returns True if nothing outright failed.
 
     Example output row:  PASS  Bright Data web   5 tools, live search returned 8421 chars
     """
-    ok = True
-    for name, check in CHECKS:
-        try:
-            print(f"{GREEN}PASS{RESET}  {name:<16} {check()}")
-        except Skip as why:
-            print(f"{YELLOW}SKIP{RESET}  {name:<16} {why}")
-        except Exception as exc:
-            ok = False
-            print(f"{RED}FAIL{RESET}  {name:<16} {str(exc)[:200]}")
-    return ok
+    colour = {"pass": GREEN, "skip": YELLOW, "fail": RED}
+    rows = status()
+    for row in rows:
+        label = row["state"].upper()
+        print(f"{colour[row['state']]}{label}{RESET}  {row['name']:<16} {row['detail']}")
+    return not any(r["state"] == "fail" for r in rows)

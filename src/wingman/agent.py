@@ -79,7 +79,7 @@ def bright_data_client() -> MCPClient:
     processes, so API_TOKEN has to be added explicitly.
     """
     if not config.BRIGHT_DATA_TOKEN:
-        raise SystemExit("API_TOKEN (Bright Data) is missing from .env")
+        raise config.MissingConfig("API_TOKEN (Bright Data) is missing from .env")
     env = {**get_default_environment(), "API_TOKEN": config.BRIGHT_DATA_TOKEN}
     params = StdioServerParameters(command="npx", args=["-y", "@brightdata/mcp"], env=env)
     return MCPClient(lambda: stdio_client(params), startup_timeout=90)

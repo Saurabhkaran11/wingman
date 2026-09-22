@@ -1,6 +1,7 @@
 """Command-line entry point.
 
 Commands:
+  wingman web                        open the dashboard in a browser
   wingman doctor                     live-check every dependency (keys, Docker, web, model, email)
   wingman ingest <folder>            build the brain from a folder of .md/.txt/.eml files
   wingman ingest-gmail "<query>"     build the brain from live Gmail (read-only IMAP)
@@ -79,6 +80,12 @@ def cmd_reset(args) -> None:
 
     brain.forget_everything()
     print(f"dataset '{config.DATASET}' wiped")
+
+
+def cmd_web(args) -> None:
+    from wingman.web import serve
+
+    serve(host=args.host, port=args.port, reload=args.reload)
 
 
 def cmd_doctor(args) -> None:
@@ -183,6 +190,12 @@ def main() -> None:
     p.add_argument("question")
     p.set_defaults(func=cmd_ask)
 
+    p = sub.add_parser("web", help="run the dashboard")
+    p.add_argument("--host", default="127.0.0.1", help="bind address; Wingman has no login, so keep this local")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--reload", action="store_true", help="reload on code changes (development)")
+    p.set_defaults(func=cmd_web)
+
     sub.add_parser("doctor", help="live-check every dependency").set_defaults(func=cmd_doctor)
     sub.add_parser("graph", help="write out/brain_graph.html").set_defaults(func=cmd_graph)
     sub.add_parser("reset", help="wipe the brain's dataset").set_defaults(func=cmd_reset)
@@ -204,4 +217,7 @@ def main() -> None:
     p.set_defaults(func=cmd_brief)
 
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except config.MissingConfig as exc:
+        raise SystemExit(f"{exc}\n\nRun `wingman doctor` to see everything that is missing.")

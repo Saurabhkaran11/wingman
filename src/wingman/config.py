@@ -31,6 +31,15 @@ os.environ.setdefault("SYSTEM_ROOT_DIRECTORY", str(ROOT / ".cognee_system"))
 os.environ.setdefault("DATA_ROOT_DIRECTORY", str(ROOT / ".data_storage"))
 
 
+class MissingConfig(RuntimeError):
+    """A required setting is absent from .env.
+
+    Deliberately NOT SystemExit: that inherits from BaseException, so it escapes
+    `except Exception` and would kill a background brief without ever ending the
+    run. The CLI turns this into a clean exit itself.
+    """
+
+
 def env(name: str, default: str = "") -> str:
     # Treat empty strings in .env the same as "not set".
     # Example: env("AWS_REGION", "us-west-2") -> "us-west-2" when the line is blank.

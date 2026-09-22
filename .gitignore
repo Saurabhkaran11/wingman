@@ -9,6 +9,14 @@ data/private/
 # Generated output
 out/
 
+# Frontend: node_modules and the Next build cache are not committed.
+# The BUILT export at src/wingman/web/static IS committed on purpose, so that
+# `git clone && uv sync && wingman web` works without Node installed at all.
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+
 # Python
 .venv/
 __pycache__/
