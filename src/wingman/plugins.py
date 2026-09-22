@@ -111,8 +111,11 @@ class ResearchPolicy(SteeringHandler):
     model proceeds to write the dossier with what it has.
     """
 
-    MAX_SEARCHES = 3
-    MAX_SCRAPES = 3
+    # Bright Data searches measured at 50-70s each, so these are a wall-clock
+    # budget as much as a cost cap. Raise them with WINGMAN_MAX_SEARCHES /
+    # WINGMAN_MAX_SCRAPES when you have time to spare.
+    MAX_SEARCHES = int(config.env("WINGMAN_MAX_SEARCHES", "2"))
+    MAX_SCRAPES = int(config.env("WINGMAN_MAX_SCRAPES", "2"))
 
     def __init__(self, person: str, company: str):
         super().__init__(context_providers=[])

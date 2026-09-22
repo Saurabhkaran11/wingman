@@ -94,7 +94,8 @@ def test_health_never_leaks_a_secret(client, monkeypatch):
 
 # ── meetings ──────────────────────────────────────────────────────────────
 
-def test_meetings_lists_external_only(client):
+def test_meetings_lists_external_only(client, monkeypatch):
+    monkeypatch.setattr(config, "ME_EMAIL", "alex@example.com")
     body = client.get("/api/meetings").json()
     titles = [m["title"] for m in body["meetings"]]
     assert "Team standup" not in titles          # I am its only attendee

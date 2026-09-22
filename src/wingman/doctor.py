@@ -45,7 +45,15 @@ def check_brain() -> str:
     from wingman import brain
 
     mode = brain.connect()
-    answer = brain.recall("Who is the user meeting next?")
+    try:
+        answer = brain.recall("Who is the user meeting next?")
+    except Exception as exc:
+        # Cognee 404s with DatasetNotFoundError until something has been stored.
+        # Connected-but-empty is a normal first-run state, so say what to do next.
+        if "DatasetNotFoundError" in str(exc) or "No datasets found" in str(exc):
+            raise Skip(f"{mode} mode, connected, but the brain is empty "
+                       f"— run: wingman ingest data/sample") from exc
+        raise
     return f"{mode} mode, recall returned {len(answer)} chars"
 
 

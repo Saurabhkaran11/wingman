@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { scrapeCount, type RunState } from "@/lib/useRun";
 
-const MAX_SCRAPES = 3; // mirrors ResearchPolicy.MAX_SCRAPES in src/wingman/plugins.py
+const MAX_SCRAPES = 2; // mirrors ResearchPolicy.MAX_SCRAPES in src/wingman/plugins.py
 
 const STATUS_PILL: Record<RunState["status"], string> = {
   idle: "pill",

@@ -25,7 +25,10 @@ docker_up = subprocess.run(["docker", "info"], capture_output=True).returncode =
 
 # --- calendar -------------------------------------------------------------
 
-def test_calendar_skips_meetings_with_only_me():
+def test_calendar_skips_meetings_with_only_me(monkeypatch):
+    # data/sample is the "Alex Rivera" persona; the test must not depend on
+    # whichever address the developer happens to have in .env.
+    monkeypatch.setattr(config, "ME_EMAIL", "alex@example.com")
     meetings = external_meetings(str(SAMPLE / "calendar.ics"))
     titles = [m.title for m in meetings]
     assert "Team standup" not in titles
@@ -185,8 +188,11 @@ def test_steering_caps_searches_and_scrapes():
 
     policy = ResearchPolicy("Priya Shah", "Cognee")
     call = lambda n, a: asyncio.run(policy.steer_before_tool(agent=None, tool_use={"name": n, "input": a})).type
-    assert [call("web_search", {"query": "Cognee news"}) for _ in range(4)] == ["proceed"] * 3 + ["guide"]
-    assert [call("read_web_page", {"url": "https://x"}) for _ in range(4)] == ["proceed"] * 3 + ["guide"]
+    # Read the caps off the policy: they are configurable, so hard-coding a
+    # number here would just break again the next time they are tuned.
+    searches, scrapes = policy.MAX_SEARCHES, policy.MAX_SCRAPES
+    assert [call("web_search", {"query": "Cognee news"}) for _ in range(searches + 1)] == ["proceed"] * searches + ["guide"]
+    assert [call("read_web_page", {"url": "https://x"}) for _ in range(scrapes + 1)] == ["proceed"] * scrapes + ["guide"]
 
 
 def test_agent_exposes_recall_memory_from_the_memory_store():
