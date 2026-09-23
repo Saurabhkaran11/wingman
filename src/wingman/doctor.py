@@ -35,6 +35,10 @@ def check_calendar() -> str:
     source = config.env("WINGMAN_CALENDAR", str(config.ROOT / "data/sample/calendar.ics"))
     meetings = external_meetings(source)
     kind = "live feed" if source.startswith("https://") else "local file"
+    if not meetings and not source.startswith("https://"):
+        # The bundled sample has fixed dates and expires overnight, which makes
+        # `brief --next` find nothing the next morning.
+        raise Skip(f"{kind}: no upcoming meetings — run: wingman refresh-sample")
     return f"{kind}: {len(meetings)} upcoming external meetings"
 
 
@@ -71,14 +75,23 @@ def check_web() -> str:
 
 
 def check_model() -> str:
-    if config.MODEL_PROVIDER == "bedrock" and not (config.env("AWS_ACCESS_KEY_ID") or config.env("AWS_PROFILE")):
-        raise Skip("set GEMINI_API_KEY (free, no card), ANTHROPIC_API_KEY, or AWS credentials for Bedrock")
+    from wingman.agent import build_chain
+
+    try:
+        chain = build_chain()
+    except config.MissingConfig as why:
+        raise Skip(str(why)) from why
     from strands import Agent
 
     from wingman.agent import build_model
 
-    reply = Agent(model=build_model(), callback_handler=None)("Reply with the single word: ready")
-    return f"{config.MODEL_PROVIDER} replied: {str(reply).strip()[:40]}"
+    model = build_model()
+    reply = Agent(model=model, callback_handler=None)("Reply with the single word: ready")
+    # `model.label` is whichever link in the chain actually answered, which is
+    # the useful fact when an earlier one is out of quota.
+    others = len(chain) - 1
+    spare = f", {others} fallback{'s' if others != 1 else ''} ready" if others else ", no fallback"
+    return f"{model.label} replied: {str(reply).strip()[:30]}{spare}"
 
 
 def check_email() -> str:

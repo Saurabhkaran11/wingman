@@ -25,11 +25,16 @@ docker_up = subprocess.run(["docker", "info"], capture_output=True).returncode =
 
 # --- calendar -------------------------------------------------------------
 
-def test_calendar_skips_meetings_with_only_me(monkeypatch):
+def test_calendar_skips_meetings_with_only_me(monkeypatch, tmp_path):
     # data/sample is the "Alex Rivera" persona; the test must not depend on
     # whichever address the developer happens to have in .env.
     monkeypatch.setattr(config, "ME_EMAIL", "alex@example.com")
-    meetings = external_meetings(str(SAMPLE / "calendar.ics"))
+    # Write the sample fresh into tmp: its dates are relative to today, so
+    # reading the committed file would make this test depend on the clock.
+    from wingman.calendar_reader import refresh_sample_calendar
+
+    ics = refresh_sample_calendar(tmp_path / "calendar.ics")
+    meetings = external_meetings(str(ics))
     titles = [m.title for m in meetings]
     assert "Team standup" not in titles
     assert titles[0] == "Coffee with Priya Shah (Cognee)"       # soonest first
@@ -224,11 +229,14 @@ def test_gemini_branch_constructs():
     from wingman import config as cfg
     from wingman.agent import build_model
 
-    with mock.patch.object(cfg, "MODEL_PROVIDER", "gemini"), \
-         mock.patch.object(cfg, "GEMINI_API_KEY", "fake-key"):
+    blank = {k: "" for k in ("GROQ_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+                             "MODEL_ID", "MODEL_CHAIN")}
+    with mock.patch.multiple(cfg, GEMINI_API_KEY="fake-key", **blank):
         model = build_model()
-    assert type(model).__name__ == "GeminiModel"
-    assert model.get_config()["model_id"] == "gemini-3.6-flash"
+        # build_model now returns the whole chain behind one object.
+        assert type(model).__name__ == "FallbackModel"
+        assert model.label == "gemini/gemini-3.5-flash"
+        assert model.get_config()["model_id"] == "gemini-3.5-flash"
 
 
 @pytest.mark.parametrize("present,expected", [
@@ -278,3 +286,174 @@ def test_json_fallback_rejects_a_reply_with_no_json():
 
     with pytest.raises(ValueError):
         _dossier_from_text("I could not complete the research.")
+
+
+# --- the fallback chain and the web cache ----------------------------------
+
+class _Dead:
+    """A model that always fails with the given message."""
+
+    def __init__(self, message):
+        self.message = message
+
+    async def stream(self, *a, **k):
+        raise RuntimeError(self.message)
+        yield  # pragma: no cover - unreachable, makes this an async generator
+
+    async def structured_output(self, *a, **k):
+        raise RuntimeError(self.message)
+        yield  # pragma: no cover
+
+    def get_config(self):
+        return {"id": "dead"}
+
+    def update_config(self, **kw):
+        pass
+
+
+class _Alive:
+    def __init__(self):
+        self.calls = 0
+
+    async def stream(self, *a, **k):
+        self.calls += 1
+        yield {"event": "ok"}
+
+    async def structured_output(self, *a, **k):
+        yield {"output": "ok"}
+
+    def get_config(self):
+        return {"id": "alive"}
+
+    def update_config(self, **kw):
+        pass
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("429 RESOURCE_EXHAUSTED quota exceeded", True),
+    ("503 Service Unavailable: high demand", True),
+    ("Rate limit reached for model", True),
+    ("TypeError: bad schema", False),
+])
+def test_quota_error_detection(message, expected):
+    from wingman.fallback import is_quota_error
+
+    assert is_quota_error(RuntimeError(message)) is expected
+
+
+def test_chain_fails_over_on_quota_and_retires_the_dead_model():
+    import asyncio
+
+    from wingman.fallback import FallbackModel
+
+    alive = _Alive()
+    model = FallbackModel([
+        ("dead/quota", lambda: _Dead("429 RESOURCE_EXHAUSTED")),
+        ("alive/good", lambda: alive),
+    ])
+
+    async def drain():
+        return [e async for e in model.stream([])]
+
+    assert asyncio.run(drain()) == [{"event": "ok"}]
+    assert model.label == "alive/good"          # advanced past the dead one
+    asyncio.run(drain())
+    assert alive.calls == 2                     # dead model never retried
+
+
+def test_chain_does_not_swallow_a_real_bug():
+    import asyncio
+
+    from wingman.fallback import FallbackModel
+
+    model = FallbackModel([("dead/bug", lambda: _Dead("TypeError: bad schema")), ("alive", _Alive)])
+    with pytest.raises(RuntimeError, match="bad schema"):
+        asyncio.run(anext(model.stream([]).__aiter__()))
+
+
+def test_exhausted_chain_names_the_fix():
+    import asyncio
+
+    from wingman.fallback import FallbackModel
+
+    model = FallbackModel([("a", lambda: _Dead("429 quota")), ("b", lambda: _Dead("429 quota"))])
+
+    async def drain():
+        return [e async for e in model.stream([])]
+
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        asyncio.run(drain())
+
+
+@pytest.mark.parametrize("keys,expected_first", [
+    ({"GROQ_API_KEY": "g", "GEMINI_API_KEY": "x"}, "groq/llama-3.3-70b-versatile"),
+    ({"GEMINI_API_KEY": "x"}, "gemini/gemini-3.5-flash"),
+    ({"ANTHROPIC_API_KEY": "a"}, "anthropic/claude-sonnet-5"),
+])
+def test_chain_orders_by_free_tier_generosity(keys, expected_first):
+    from wingman import config as cfg
+    from wingman.agent import build_chain
+
+    blank = {k: "" for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY",
+                             "OPENROUTER_API_KEY", "MODEL_ID", "MODEL_CHAIN")}
+    with mock.patch.multiple(cfg, **{**blank, **keys}):
+        chain = build_chain()
+    assert chain[0][0] == expected_first
+    assert len(chain) >= 1
+
+
+def test_no_keys_at_all_names_the_free_option():
+    from wingman import config as cfg
+    from wingman.agent import build_chain
+
+    blank = {k: "" for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY",
+                             "OPENROUTER_API_KEY", "MODEL_ID", "MODEL_CHAIN")}
+    with mock.patch.multiple(cfg, **blank), \
+         mock.patch.object(cfg, "env", return_value=""):
+        with pytest.raises(cfg.MissingConfig, match="GROQ_API_KEY"):
+            build_chain()
+
+
+def test_web_cache_round_trip(tmp_path, monkeypatch):
+    from wingman import webcache
+
+    monkeypatch.setattr(webcache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(config, "WEB_CACHE_HOURS", 12)
+
+    assert webcache.get("search_engine", {"query": "Cognee"}) is None
+    webcache.put("search_engine", {"query": "Cognee"}, "results here")
+    assert webcache.get("search_engine", {"query": "Cognee"}) == "results here"
+    # A different query is a different key.
+    assert webcache.get("search_engine", {"query": "something else"}) is None
+
+
+def test_web_cache_expires_and_can_be_disabled(tmp_path, monkeypatch):
+    import json
+    import time
+
+    from wingman import webcache
+
+    monkeypatch.setattr(webcache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(config, "WEB_CACHE_HOURS", 12)
+    webcache.put("search_engine", {"query": "x"}, "old")
+
+    # Age the entry past the window.
+    path = next(tmp_path.glob("*.json"))
+    entry = json.loads(path.read_text())
+    entry["at"] = time.time() - 13 * 3600
+    path.write_text(json.dumps(entry))
+    assert webcache.get("search_engine", {"query": "x"}) is None
+
+    monkeypatch.setattr(config, "WEB_CACHE_HOURS", 0)
+    webcache.put("search_engine", {"query": "y"}, "ignored")
+    assert webcache.get("search_engine", {"query": "y"}) is None
+
+
+def test_corrupt_cache_file_is_a_miss_not_a_crash(tmp_path, monkeypatch):
+    from wingman import webcache
+
+    monkeypatch.setattr(webcache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(config, "WEB_CACHE_HOURS", 12)
+    webcache.put("search_engine", {"query": "x"}, "fine")
+    next(tmp_path.glob("*.json")).write_text("{truncated")
+    assert webcache.get("search_engine", {"query": "x"}) is None

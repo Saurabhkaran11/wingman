@@ -13,16 +13,21 @@ You need three. Email is optional.
 
 | What | Where | Card? |
 |---|---|---|
-| **Gemini** — powers the agent *and* the brain | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | No |
+| **Groq** — the agent's main model, ~1,000 req/day | [console.groq.com](https://console.groq.com) | No |
+| **Gemini** — fallback, and powers the brain locally | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | No |
 | **Bright Data** — the live web | Your hackathon code, or a free account | No |
 | **Cognee** — the brain | Your hackathon code, **or skip it** and run local | No |
 
 Open `.env` in the project root and fill in:
 
 ```bash
+GROQ_API_KEY=your-groq-key
 GEMINI_API_KEY=your-gemini-key
 API_TOKEN=your-bright-data-token
 ```
+
+Set both model keys if you can. They chain: when Groq's daily cap runs out,
+Wingman moves to Gemini mid-run instead of failing.
 
 **For Cognee, pick one.** Cloud, if you have a code:
 
@@ -45,7 +50,15 @@ EMBEDDING_API_KEY=your-gemini-key
 - Set **all four** embedding lines. Changing only the LLM leaves embeddings defaulting to OpenAI.
 - Cloud is faster and keeps graph building off your Gemini rate limit. Prefer it if you have the code.
 
-## 2. Check the keys work
+## 2. Move the sample calendar to today
+
+The bundled sample has dated meetings, so it expires overnight:
+
+```bash
+uv run wingman refresh-sample
+```
+
+## 3. Check the keys work
 
 ```bash
 uv run wingman doctor
@@ -55,7 +68,7 @@ uv run wingman doctor
 - You need green on **Cognee brain**, **Bright Data web** and **LLM**. Docker and Calendar already pass.
 - Email can stay yellow — briefs are saved as `.eml` files instead of sent.
 
-## 3. Prove each layer before the big run
+## 4. Prove each layer before the big run
 
 Do these in order. If one fails you know exactly which layer broke.
 
@@ -86,7 +99,7 @@ uv run wingman ask "What did I promise Priya Shah, and did I deliver it?"
 You should get: a benchmark, promised by Friday 19 June, still not delivered. That answer joins
 three separate documents — it's the thing plain search can't do.
 
-## 4. Run it
+## 5. Run it
 
 ```bash
 uv run wingman web
@@ -135,7 +148,8 @@ uv run wingman reset                         # wipe the brain
 |---|---|---|
 | `doctor` says LLM SKIP | No key found | Set `GEMINI_API_KEY` in `.env` |
 | Ingest is very slow | Each document builds a graph | Normal. 5–10 min for 7 files |
-| Rate limit errors | Free tier is 15 requests/minute | `--delay 4`, or switch Cognee to cloud |
+| Rate limit errors | A free tier hit its daily cap | Add another model key — they chain automatically |
+| "no upcoming meetings" | The sample calendar expired | `uv run wingman refresh-sample` |
 | `ask` hangs forever | The brain never connected | Ctrl-C, re-run `doctor` |
 | Brief fails on structured output | Provider can't do the nested schema | It retries as plain JSON by itself |
 | Sandbox render failed | Docker not running | Start Docker Desktop. The brief still works, Markdown only |

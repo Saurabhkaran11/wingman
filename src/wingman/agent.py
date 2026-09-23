@@ -16,7 +16,7 @@ from strands.memory import MemoryManager
 from strands.memory.types import MemoryInjectionConfig
 from strands.tools.mcp import MCPClient
 
-from wingman import actions, config, events
+from wingman import actions, config, events, webcache
 from wingman.models import Dossier, Meeting
 from wingman.plugins import AuditHook, CogneeMemory, ResearchPolicy, format_injection
 
@@ -62,36 +62,140 @@ JSON_RETRY_PROMPT = (
 )
 
 
-def build_model():
-    """Pick the LLM provider from config.
+# Free-tier daily caps are small and per-model, so the chain lists several
+# models per provider: an exhausted one is skipped and the run continues.
+# Groq first — roughly 1,000 requests/day free, and the fastest of the three.
+GROQ_MODELS = ("llama-3.3-70b-versatile", "llama-3.1-8b-instant")
+GEMINI_MODELS = ("gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash")
+OPENROUTER_MODELS = ("meta-llama/llama-3.3-70b-instruct:free",)
 
-    Resolution order (see config.MODEL_PROVIDER): whichever key is present.
-      GEMINI_API_KEY    -> GeminiModel     (free tier, no credit card)
-      ANTHROPIC_API_KEY -> AnthropicModel
-      otherwise         -> BedrockModel    (AWS credential chain)
 
-    Example: GEMINI_API_KEY set and nothing else -> GeminiModel("gemini-3.6-flash").
-    """
-    if config.MODEL_PROVIDER == "gemini":
-        from strands.models.gemini import GeminiModel
+def _make_groq(model_id: str):
+    # Groq speaks the OpenAI protocol, so the OpenAI client works with its base URL.
+    from strands.models.openai import OpenAIModel
 
-        return GeminiModel(
-            client_args={"api_key": config.GEMINI_API_KEY},
-            model_id=config.MODEL_ID or "gemini-3.5-flash",
-            params={"max_output_tokens": 8000},
-        )
-    if config.MODEL_PROVIDER == "anthropic":
-        from strands.models.anthropic import AnthropicModel
+    return OpenAIModel(
+        client_args={"api_key": config.GROQ_API_KEY, "base_url": "https://api.groq.com/openai/v1"},
+        model_id=model_id,
+        params={"max_tokens": 8000},
+    )
 
-        return AnthropicModel(
-            client_args={"api_key": config.ANTHROPIC_API_KEY},
-            model_id=config.MODEL_ID or "claude-sonnet-5",
-            max_tokens=8000,
-        )
+
+def _make_openrouter(model_id: str):
+    from strands.models.openai import OpenAIModel
+
+    return OpenAIModel(
+        client_args={"api_key": config.OPENROUTER_API_KEY, "base_url": "https://openrouter.ai/api/v1"},
+        model_id=model_id,
+        params={"max_tokens": 8000},
+    )
+
+
+def _make_gemini(model_id: str):
+    from strands.models.gemini import GeminiModel
+
+    return GeminiModel(
+        client_args={"api_key": config.GEMINI_API_KEY},
+        model_id=model_id,
+        params={"max_output_tokens": 8000},
+    )
+
+
+def _make_anthropic(model_id: str):
+    from strands.models.anthropic import AnthropicModel
+
+    return AnthropicModel(
+        client_args={"api_key": config.ANTHROPIC_API_KEY},
+        model_id=model_id,
+        max_tokens=8000,
+    )
+
+
+def _make_bedrock(model_id: str):
     from strands.models import BedrockModel
 
-    kwargs = {"model_id": config.MODEL_ID} if config.MODEL_ID else {}
+    kwargs = {"model_id": model_id} if model_id else {}
     return BedrockModel(region_name=config.env("AWS_REGION", "us-west-2"), **kwargs)
+
+
+_FACTORIES = {
+    "groq": _make_groq,
+    "openrouter": _make_openrouter,
+    "gemini": _make_gemini,
+    "anthropic": _make_anthropic,
+    "bedrock": _make_bedrock,
+}
+
+_KEYED_BY = {
+    "groq": lambda: config.GROQ_API_KEY,
+    "openrouter": lambda: config.OPENROUTER_API_KEY,
+    "gemini": lambda: config.GEMINI_API_KEY,
+    "anthropic": lambda: config.ANTHROPIC_API_KEY,
+    "bedrock": lambda: config.env("AWS_ACCESS_KEY_ID") or config.env("AWS_PROFILE"),
+}
+
+
+def build_chain() -> list[tuple[str, object]]:
+    """Ordered (label, factory) pairs for every provider whose key is present.
+
+    WINGMAN_MODEL_CHAIN overrides the order explicitly; otherwise the chain is
+    assembled from the keys in .env, most generous free tier first. Adding a key
+    is all it takes to gain a fallback — no other configuration.
+
+    Example: GROQ_API_KEY and GEMINI_API_KEY set ->
+        [("groq/llama-3.3-70b-versatile", ...), ("groq/llama-3.1-8b-instant", ...),
+         ("gemini/gemini-3.5-flash", ...), ("gemini/gemini-3.6-flash", ...), ...]
+    """
+    chain: list[tuple[str, object]] = []
+
+    if config.MODEL_CHAIN:
+        for entry in config.MODEL_CHAIN.split(","):
+            provider, _, model_id = entry.strip().partition(":")
+            factory = _FACTORIES.get(provider)
+            if factory and model_id:
+                chain.append((f"{provider}/{model_id}", lambda f=factory, m=model_id: f(m)))
+        if chain:
+            return chain
+
+    # A single explicit model id pins that one provider and skips the chain.
+    if config.MODEL_ID:
+        provider = config.MODEL_PROVIDER
+        factory = _FACTORIES[provider]
+        return [(f"{provider}/{config.MODEL_ID}", lambda: factory(config.MODEL_ID))]
+
+    for provider, model_ids in (
+        ("groq", GROQ_MODELS),
+        ("gemini", GEMINI_MODELS),
+        ("openrouter", OPENROUTER_MODELS),
+        ("anthropic", ("claude-sonnet-5",)),
+        ("bedrock", ("",)),
+    ):
+        if not _KEYED_BY[provider]():
+            continue
+        factory = _FACTORIES[provider]
+        for model_id in model_ids:
+            label = f"{provider}/{model_id}" if model_id else provider
+            chain.append((label, lambda f=factory, m=model_id: f(m)))
+
+    if not chain:
+        raise config.MissingConfig(
+            "no model key found. Set GROQ_API_KEY (free, ~1,000 requests/day, no card), "
+            "or GEMINI_API_KEY, ANTHROPIC_API_KEY, or AWS credentials."
+        )
+    return chain
+
+
+def build_model():
+    """The model the agent runs on: the whole chain behind one object.
+
+    Returns a FallbackModel, so a provider hitting its daily cap mid-run moves
+    to the next one instead of ending the brief.
+
+    Example: with GROQ_API_KEY and GEMINI_API_KEY set -> FallbackModel over 5 models.
+    """
+    from wingman.fallback import FallbackModel
+
+    return FallbackModel(build_chain())
 
 
 def bright_data_client() -> MCPClient:
@@ -119,6 +223,17 @@ def build_tools(web: MCPClient) -> list:
     # Note: there is no recall_memory tool here. MemoryManager creates it from
     # CogneeMemory, so the brain is also searched automatically before every turn.
 
+    def _call_web(mcp_tool: str, args: dict) -> str:
+        # Served from disk when the same call was made recently: a live search
+        # takes 45-100s and costs credits, a cache hit costs neither.
+        cached = webcache.get(mcp_tool, args)
+        if cached is not None:
+            return cached
+        result = web.call_tool_sync(uuid.uuid4().hex, mcp_tool, args)
+        text = _mcp_text(result)[:MAX_PAGE_CHARS]
+        webcache.put(mcp_tool, args, text)
+        return text
+
     @tool
     def web_search(query: str) -> str:
         """Search the live public web (Google results via Bright Data).
@@ -126,8 +241,7 @@ def build_tools(web: MCPClient) -> list:
         Args:
             query: Search query. Put names in quotes, e.g. '"Priya Shah" "Cognee"'.
         """
-        result = web.call_tool_sync(uuid.uuid4().hex, "search_engine", {"query": query})
-        return _mcp_text(result)[:MAX_PAGE_CHARS]
+        return _call_web("search_engine", {"query": query})
 
     @tool
     def read_web_page(url: str) -> str:
@@ -136,8 +250,7 @@ def build_tools(web: MCPClient) -> list:
         Args:
             url: Full https URL taken from web_search results.
         """
-        result = web.call_tool_sync(uuid.uuid4().hex, "scrape_as_markdown", {"url": url})
-        return _mcp_text(result)[:MAX_PAGE_CHARS]
+        return _call_web("scrape_as_markdown", {"url": url})
 
     @tool
     def save_followup_draft(person: str, subject: str, body: str) -> str:

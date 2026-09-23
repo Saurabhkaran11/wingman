@@ -8,6 +8,7 @@ Commands:
   wingman ask "<question>"           ask the brain a question directly
   wingman graph                      write an interactive HTML view of the knowledge graph
   wingman meetings                   list upcoming meetings with external attendees
+  wingman refresh-sample             move the sample calendar to tomorrow (run before a demo)
   wingman brief --next               full run for the next meeting
   wingman brief --person "Name" --company "Co"
   wingman render <dossier.json>      render + email an existing dossier (offline; no LLM, no web)
@@ -68,6 +69,14 @@ def cmd_graph(args) -> None:
     print(f"graph written to {path}")
 
 
+def cmd_refresh_sample(args) -> None:
+    from wingman.calendar_reader import refresh_sample_calendar
+
+    path = refresh_sample_calendar()
+    print(f"sample calendar moved to tomorrow: {config.show(path)}")
+    cmd_meetings(args)
+
+
 def cmd_meetings(args) -> None:
     from wingman.calendar_reader import external_meetings
 
@@ -76,10 +85,11 @@ def cmd_meetings(args) -> None:
 
 
 def cmd_reset(args) -> None:
-    from wingman import brain
+    from wingman import brain, webcache
 
+    dropped = webcache.clear()
     brain.forget_everything()
-    print(f"dataset '{config.DATASET}' wiped")
+    print(f"dataset '{config.DATASET}' wiped, {dropped} cached web results dropped")
 
 
 def cmd_web(args) -> None:
@@ -205,6 +215,10 @@ def main() -> None:
     p = sub.add_parser("meetings", help="list upcoming external meetings")
     p.add_argument("--calendar", default=default_calendar)
     p.set_defaults(func=cmd_meetings)
+
+    p = sub.add_parser("refresh-sample", help="move the sample calendar to tomorrow")
+    p.add_argument("--calendar", default=default_calendar)
+    p.set_defaults(func=cmd_refresh_sample)
 
     p = sub.add_parser("render", help="render + email an existing dossier JSON (offline)")
     p.add_argument("dossier")

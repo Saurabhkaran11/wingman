@@ -159,6 +159,7 @@ uv run wingman render examples/sample_dossier.json
 
 - **All commands:**
   - `web` — run the dashboard.
+  - `refresh-sample` — move the sample calendar to tomorrow (run before any demo).
   - `doctor` — live-check every dependency.
   - `ingest <folder>` — remember `.md`, `.txt` and `.eml` files.
   - `ingest-gmail "<gmail search>"` — remember live Gmail messages (read-only IMAP); add `--dry-run` to preview.
@@ -174,6 +175,14 @@ uv run wingman render examples/sample_dossier.json
   - `dossier_<person>.json`
   - `followup_<person>.md`
   - `dossier_<person>.eml` (only when SMTP is not configured)
+
+### Surviving free-tier quotas
+
+- Set **as many model keys as you have**; they form a fallback chain, best free tier first.
+- When one hits its daily cap mid-run, Wingman moves to the next instead of failing.
+- **Groq is the most generous** (~1,000 requests/day, no credit card) versus Gemini's ~20 — set `GROQ_API_KEY` and it leads the chain.
+- `wingman doctor` names which model answered and how many fallbacks are left.
+- Bright Data results cache to disk for 12 hours, so rehearsing costs no credits and no waiting.
 
 ### Real-time data
 
@@ -231,6 +240,8 @@ uv run pytest -q
 - [x] `wingman doctor` live checks
 - [x] Strands memory injection, audit hook and steering policy
 - [x] Web dashboard: FastAPI + Next.js, live agent streaming, verified in a browser
+- [x] Provider fallback chain — a model hitting its daily cap no longer ends the run
+- [x] Bright Data disk cache — rehearsing a demo costs no credits and no waiting
 - [x] Bright Data MCP wiring verified (server boots, 5 tools listed, call reaches the API)
 - [x] Full `brief` pipeline verified end to end with the agent mocked
 - [x] Test suite: `uv run pytest -q` (55 tests, offline)

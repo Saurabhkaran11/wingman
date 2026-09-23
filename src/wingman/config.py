@@ -60,17 +60,34 @@ COGNEE_API_KEY = env("COGNEE_API_KEY")
 # Bright Data: the MCP server reads API_TOKEN from the environment.
 BRIGHT_DATA_TOKEN = env("API_TOKEN")
 
-# Model provider: "bedrock" (Strands default) or "anthropic".
-# Example: with only ANTHROPIC_API_KEY set, provider resolves to "anthropic".
+# Model providers. Any number of keys may be set: agent.build_chain() orders
+# them into a fallback chain so one provider running out of quota mid-run is
+# survivable rather than fatal.
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = env("GEMINI_API_KEY")
-# Gemini first: it is the only one of the three with a free tier that needs no
-# credit card, so a laptop with just that key still runs the whole agent.
+# Groq leads when present: ~1,000 requests/day free versus Gemini's ~20, and it
+# is markedly faster. Gemini's free tier is thin enough to exhaust in an evening.
+GROQ_API_KEY = env("GROQ_API_KEY")
+OPENROUTER_API_KEY = env("OPENROUTER_API_KEY")
+
 MODEL_PROVIDER = env(
     "WINGMAN_MODEL_PROVIDER",
-    "gemini" if GEMINI_API_KEY else "anthropic" if ANTHROPIC_API_KEY else "bedrock",
+    "groq" if GROQ_API_KEY
+    else "gemini" if GEMINI_API_KEY
+    else "anthropic" if ANTHROPIC_API_KEY
+    else "bedrock",
 )
 MODEL_ID = env("WINGMAN_MODEL_ID")  # blank = provider default
+
+# Ordered fallback chain, best first. Blank = assembled from whichever keys are
+# present. Override with a comma-separated "provider:model_id" list, e.g.
+# "groq:llama-3.3-70b-versatile,gemini:gemini-3.5-flash,gemini:gemini-3.6-flash".
+MODEL_CHAIN = env("WINGMAN_MODEL_CHAIN")
+
+# Cache Bright Data results on disk for this many hours. Rehearsing then costs
+# no credits and no waiting: a live search measured 45-100s, a cache hit is
+# instant. Set to 0 to disable.
+WEB_CACHE_HOURS = float(env("WINGMAN_WEB_CACHE_HOURS", "12") or 0)
 
 SMTP_USER = env("SMTP_USER")
 SMTP_APP_PASSWORD = env("SMTP_APP_PASSWORD")

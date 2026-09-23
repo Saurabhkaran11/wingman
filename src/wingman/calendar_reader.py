@@ -1,13 +1,65 @@
 """Read an .ics calendar and find meetings with people who are not me."""
 
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from icalendar import Calendar
 
 from wingman import config
 from wingman.models import Meeting
+
+# The sample calendar is written with fixed dates, so it silently goes stale:
+# the day after those dates, nothing is "upcoming" and `brief --next` finds no
+# meeting. refresh_sample_calendar() rewrites it relative to today.
+SAMPLE_CALENDAR = config.ROOT / "data" / "sample" / "calendar.ics"
+
+_SAMPLE_EVENTS = [
+    # (uid, summary, location, days ahead, UTC hour, minutes long, attendee name, attendee email)
+    ("standup", "Team standup", "", 1, 16, 15, "", ""),
+    ("priya-coffee", "Coffee with Priya Shah (Cognee)", "Sightglass Coffee, 270 7th St, San Francisco",
+     1, 17, 45, "Priya Shah", "priya.shah@example.com"),
+    ("daniel-screen", "Follow-up with Daniel Okafor (Northwind Robotics)", "",
+     2, 18, 30, "Daniel Okafor", "daniel.okafor@example.com"),
+]
+
+
+def refresh_sample_calendar(path: Path | None = None) -> Path:
+    """Rewrite the sample calendar so its meetings are tomorrow and the day after.
+
+    Run this before a demo. Without it the sample data expires overnight and
+    `wingman brief --next` reports no upcoming meetings.
+
+    Example: refresh_sample_calendar() -> PosixPath('data/sample/calendar.ics')
+    """
+    path = path or SAMPLE_CALENDAR
+    today = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//wingman//sample//EN"]
+
+    for uid, summary, location, days, hour, minutes, name, email in _SAMPLE_EVENTS:
+        start = (today + timedelta(days=days)).replace(hour=hour)
+        end = start + timedelta(minutes=minutes)
+        stamp = "%Y%m%dT%H%M%SZ"
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{uid}-{start:%Y%m%d}@example.com",
+            f"DTSTART:{start:{stamp}}",
+            f"DTEND:{end:{stamp}}",
+            f"SUMMARY:{summary}",
+        ]
+        if location:
+            lines.append(f"LOCATION:{location}")
+        lines += [
+            "ORGANIZER;CN=Alex Rivera:mailto:alex@example.com",
+            "ATTENDEE;CN=Alex Rivera:mailto:alex@example.com",
+        ]
+        if email:
+            lines.append(f"ATTENDEE;CN={name}:mailto:{email}")
+        lines.append("END:VEVENT")
+
+    lines.append("END:VCALENDAR")
+    path.write_text("\n".join(lines) + "\n")
+    return path
 
 
 def _attendees(event) -> list[str]:
