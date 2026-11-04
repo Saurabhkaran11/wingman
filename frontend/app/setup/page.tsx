@@ -26,8 +26,8 @@ const GUIDE: Record<string, { env: string[]; note: string }> = {
     note: "Your Bright Data API token. The MCP server reads this exact variable name.",
   },
   LLM: {
-    env: ["ANTHROPIC_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
-    note: "Either an Anthropic key, or AWS credentials with Bedrock access. One is enough.",
+    env: ["GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+    note: "Any one provider is enough. Groq and Gemini have free tiers. Each extra key adds a fallback.",
   },
   Email: {
     env: ["SMTP_USER", "SMTP_APP_PASSWORD"],
@@ -97,7 +97,13 @@ export default function SetupPage() {
             re-check.
           </p>
 
-          {health && (
+          {health?.public && (
+            <p className="small" style={{ margin: "0 0 22px" }}>
+              This is the public demo, so no live check runs here. Clone the repo and add your own keys to <code>.env</code> on your own machine.
+            </p>
+          )}
+
+          {health && !health.public && (
             <p className="small muted" style={{ margin: "0 0 22px" }}>
               {passing} of {total} checks passing
               {health.ready ? " · briefs can run" : " · a brief needs Cognee, Bright Data and an LLM"}

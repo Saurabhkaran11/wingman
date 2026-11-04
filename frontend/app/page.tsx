@@ -83,6 +83,11 @@ export default function Dashboard() {
     void loadSaved(wanted ?? undefined);
   }, [refreshHealth, loadSaved]);
 
+  // The public demo opens on its sample brief instead of an empty page.
+  useEffect(() => {
+    if (health?.public && !slug && saved[0]) void openDossier(saved[0].slug);
+  }, [health, slug, saved, openDossier]);
+
   // Surface run failures the same way as everything else.
   useEffect(() => {
     if (runError) {
@@ -105,6 +110,19 @@ export default function Dashboard() {
         busy={busy}
         onBrief={() => void start({})}
       />
+
+      {health?.public && (
+        <div className="panel panel-alert" role="note" style={{ margin: "10px 14px 0" }}>
+          <div className="panel-title">Public demo with sample data</div>
+          <p className="alert-row" style={{ margin: 0 }}>
+            The brief and people here are fictional. Live briefs read private email and use paid
+            services, so they run on your own machine with your own keys.{" "}
+            <a href="https://github.com/Saurabhkaran11/wingman#setup" target="_blank" rel="noopener">
+              Setup steps
+            </a>
+          </p>
+        </div>
+      )}
 
       <main className="workspace">
         <MeetingRail

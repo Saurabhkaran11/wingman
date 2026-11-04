@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from wingman import actions, brain, config, events, sandbox
+from wingman import actions, config, events, sandbox
 from wingman.calendar_reader import external_meetings
 from wingman.models import Dossier, Meeting
 
@@ -22,6 +22,8 @@ class NoMeetings(RuntimeError):
 
 def calendar_source(override: str = "") -> str:
     """Where the calendar comes from: an override, WINGMAN_CALENDAR, or the sample."""
+    if config.PUBLIC_DEMO:
+        return str(config.ROOT / "data/sample/calendar.ics")
     return override or config.env("WINGMAN_CALENDAR", str(config.ROOT / "data/sample/calendar.ics"))
 
 
@@ -86,6 +88,12 @@ def saved_dossiers() -> list[dict]:
     return out
 
 
+def seed_public_demo() -> None:
+    """Give the public demo its one clearly labelled example brief."""
+    sample = (config.ROOT / "examples" / "sample_dossier.json").read_text()
+    dossier_path(actions.slug(Dossier.model_validate_json(sample).person), "json").write_text(sample)
+
+
 def load_dossier(slug: str) -> Dossier:
     return Dossier.model_validate_json(dossier_path(slug, "json").read_text())
 
@@ -99,6 +107,8 @@ def run_brief(meeting: Meeting, writeback: bool = True) -> dict:
     Example: run_brief(meeting) -> {"slug": "priya_shah", "pdf": "out/...pdf",
                                     "email": "emailed dossier to you@gmail.com", ...}
     """
+    # Imported here because Cognee is heavy and only a real run needs it.
+    from wingman import brain
     from wingman.agent import bright_data_client, prepare_dossier
 
     events.emit("step", "Next meeting", f"{meeting.title} with {meeting.attendees[0]}")

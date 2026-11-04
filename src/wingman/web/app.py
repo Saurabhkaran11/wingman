@@ -8,6 +8,7 @@ Design rules this file sticks to:
 """
 
 import json
+import os
 import queue
 from pathlib import Path
 from typing import Iterator
@@ -19,8 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from wingman import config, doctor, events, service
+from wingman.calendar_reader import refresh_sample_calendar
 
 STATIC = Path(__file__).parent / "static"
+PUBLIC_DEMO_MESSAGE = (
+    "This public demo shows sample data only. To run a live brief, clone the repo "
+    "and run Wingman on your own machine with your own API keys."
+)
 KEEPALIVE_SECONDS = 15  # a comment line so proxies do not close an idle stream
 
 app = FastAPI(title="Wingman", version="0.1.0", docs_url="/api/docs")
@@ -54,6 +60,15 @@ def health() -> dict:
     Returns states and human hints only — never a key, a token or a URL from .env.
     Example: {"ready": false, "checks": [{"name": "LLM", "state": "skip", "detail": "set ..."}]}
     """
+    if config.PUBLIC_DEMO:
+        # The real checks spend credits, so anonymous visitors never trigger them.
+        names = [name for name, _ in doctor.CHECKS]
+        return {
+            "checks": [{"name": name, "state": "skip", "detail": "Not checked on the public demo."} for name in names],
+            "ready": False,
+            "public": True,
+            "user": config.ME_NAME,
+        }
     checks = doctor.status()
     blocking = {"Cognee brain", "Bright Data web", "LLM"}
     return {
@@ -69,6 +84,10 @@ def meetings() -> dict:
     """Upcoming meetings with an external attendee, soonest first."""
     try:
         upcoming = service.upcoming()
+        if config.PUBLIC_DEMO and not upcoming:
+            # The sample calendar has fixed dates, so roll it forward when it expires.
+            refresh_sample_calendar()
+            upcoming = service.upcoming()
     except Exception as exc:
         raise HTTPException(502, f"could not read the calendar: {exc}") from exc
     return {
@@ -80,6 +99,8 @@ def meetings() -> dict:
 @app.get("/api/dossiers")
 def dossiers() -> dict:
     """Every brief already on disk, newest first."""
+    if config.PUBLIC_DEMO:
+        service.seed_public_demo()
     return {"dossiers": service.saved_dossiers()}
 
 
@@ -112,6 +133,8 @@ def start_brief(request: BriefRequest) -> JSONResponse:
 
     The browser then opens /api/runs/{id}/stream to watch it happen.
     """
+    if config.PUBLIC_DEMO:
+        raise HTTPException(403, PUBLIC_DEMO_MESSAGE)
     try:
         meeting = service.select_meeting(person=request.person.strip(), company=request.company.strip())
     except service.NoMeetings as exc:
@@ -203,8 +226,10 @@ def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False) -> No
     """
     import uvicorn
 
-    if host not in ("127.0.0.1", "localhost"):
-        print(f"\n  WARNING: binding to {host}. Wingman has no login — anyone who can reach\n"
-              f"  this port can read your briefs and spend your API credits.\n")
+    if host not in ("127.0.0.1", "localhost") and config.env("WINGMAN_PUBLIC") != "0":
+        config.PUBLIC_DEMO = True
+        os.environ["WINGMAN_PUBLIC"] = "1"  # so a --reload worker agrees
+        print(f"\n  Binding to {host}, so Wingman runs as a read-only public demo.\n"
+              f"  It has no login. WINGMAN_PUBLIC=0 lets it run live, only behind real auth.\n")
     print(f"\n  Wingman dashboard -> http://{'localhost' if host == '127.0.0.1' else host}:{port}\n")
     uvicorn.run("wingman.web.app:app" if reload else app, host=host, port=port, reload=reload, log_level="warning")

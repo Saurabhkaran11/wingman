@@ -89,6 +89,11 @@ MODEL_CHAIN = env("WINGMAN_MODEL_CHAIN")
 # instant. Set to 0 to disable.
 WEB_CACHE_HOURS = float(env("WINGMAN_WEB_CACHE_HOURS", "12") or 0)
 
+# Public demo: read-only sample data. No agent run, no live check and no private
+# calendar, so a visitor can never spend the owner's keys or read their mail.
+# On by default on Render. `wingman web` also turns it on for a non-local bind.
+PUBLIC_DEMO = env("WINGMAN_PUBLIC", "1" if env("RENDER") else "0") == "1"
+
 SMTP_USER = env("SMTP_USER")
 SMTP_APP_PASSWORD = env("SMTP_APP_PASSWORD")
 SMTP_HOST = env("SMTP_HOST", "smtp.gmail.com")

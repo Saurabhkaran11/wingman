@@ -12,6 +12,8 @@ export interface Health {
   checks: HealthCheck[];
   /** True when the three services a brief actually needs are all passing. */
   ready: boolean;
+  /** True on a public deployment: sample data only, no live runs or checks. */
+  public?: boolean;
   user: string;
 }
 

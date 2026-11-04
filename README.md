@@ -66,7 +66,7 @@ flowchart LR
 
 ## Prerequisites
 
-- Python 3.10 – 3.14
+- Python 3.12 or newer (see `pyproject.toml`)
 - [uv](https://docs.astral.sh/uv/) for environment management
 - Docker Desktop (running)
 - Node.js 18+ (only if you run the Bright Data MCP server locally with `npx`)
@@ -209,6 +209,17 @@ wingman/
 └── out/                  # generated dossiers (git-ignored)
 ```
 
+## Deploy
+
+Wingman is a personal agent with no login. A live brief reads private email and uses paid services, so it runs on your own machine with your own keys. A public host only serves a read-only demo with fictional sample data.
+
+- **Host:** Render web service with the Python runtime.
+- **Build command:** `pip install uv && uv sync --frozen --no-dev`
+- **Start command:** `uv run --no-sync wingman web --host 0.0.0.0 --port $PORT`
+- **Settings:** `PYTHON_VERSION=3.12`. No keys. Do not set any key from `.env.example` on a public host.
+- **Public demo mode:** on by default on Render and on any non-local bind. It shows the sample brief and sample calendar. It blocks agent runs and live checks and ignores `WINGMAN_CALENDAR`.
+- Vercel does not fit because the app is a long-running Python server.
+
 ## Tests
 
 ```bash
@@ -244,7 +255,7 @@ uv run pytest -q
 - [x] Bright Data disk cache — rehearsing a demo costs no credits and no waiting
 - [x] Bright Data MCP wiring verified (server boots, 5 tools listed, call reaches the API)
 - [x] Full `brief` pipeline verified end to end with the agent mocked
-- [x] Test suite: `uv run pytest -q` (55 tests, offline)
+- [x] Test suite: `uv run pytest -q` (offline)
 - [x] Gemini provider: a no-credit-card path to a working brief
 - [x] Full live run on real services — brain recall, web search, steering cap, PDF, follow-up draft
 - [x] Pitch deck, one-minute speech and demo run sheet ([docs/PITCH.md](docs/PITCH.md))

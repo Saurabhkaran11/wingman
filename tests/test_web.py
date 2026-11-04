@@ -277,3 +277,38 @@ def test_dashboard_and_setup_pages_are_served(client):
 def test_static_assets_do_not_shadow_the_api(client):
     # The SPA is mounted at "/" but must never intercept an /api route.
     assert client.get("/api/health").headers["content-type"].startswith("application/json")
+
+
+# ── public demo ─────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def public_demo(out_dir, monkeypatch):
+    monkeypatch.setattr(config, "PUBLIC_DEMO", True)
+    return out_dir
+
+
+def test_public_demo_refuses_a_brief_and_starts_no_run(client, public_demo):
+    response = client.post("/api/brief", json={"person": "Priya Shah", "company": "Cognee"})
+    assert response.status_code == 403
+    assert "own API keys" in response.json()["detail"]
+    assert events.active() is None
+
+
+def test_public_demo_health_makes_no_live_call(client, public_demo):
+    with mock.patch("wingman.doctor.status") as live_checks:
+        body = client.get("/api/health").json()
+    live_checks.assert_not_called()
+    assert body["public"] is True and body["ready"] is False
+    assert {c["state"] for c in body["checks"]} == {"skip"}
+
+
+def test_public_demo_ignores_a_private_calendar(public_demo, monkeypatch):
+    monkeypatch.setenv("WINGMAN_CALENDAR", "https://calendar.example.com/private.ics")
+    assert service.calendar_source().endswith("calendar.ics")
+    assert not service.calendar_source().startswith("https://")
+
+
+def test_public_demo_serves_the_sample_brief(client, public_demo):
+    listed = client.get("/api/dossiers").json()["dossiers"]
+    assert [d["slug"] for d in listed] == ["priya_shah"]
+    assert client.get("/api/dossiers/priya_shah").json()["person"] == "Priya Shah"

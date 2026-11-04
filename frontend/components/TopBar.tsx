@@ -41,7 +41,7 @@ export function TopBar({ health, healthError, busy, onBrief }: Props) {
           className="btn btn-clay"
           onClick={onBrief}
           disabled={busy || !health?.ready}
-          title={health?.ready ? "Brief the next meeting on your calendar" : "Finish setup first"}
+          title={health?.public ? "Live briefs run locally with your own keys" : health?.ready ? "Brief the next meeting on your calendar" : "Finish setup first"}
         >
           {busy ? "Researching…" : "Brief next meeting"}
         </button>
@@ -62,6 +62,14 @@ function HealthPill({ health, error }: { health: Health | null; error: string | 
     return (
       <span className="pill" role="status">
         checking…
+      </span>
+    );
+  }
+
+  if (health.public) {
+    return (
+      <span className="pill pill-warn" role="status">
+        public demo
       </span>
     );
   }
